@@ -9,7 +9,7 @@ public class NavMesh : MonoBehaviour
         Graph g = new Graph { outline = outline, all_nodes = new List<GraphNode>() };
 
         List<Vector3> verts = outline.Select(w => w.start).ToList();
-        if (IsClockwise(verts)) verts.Reverse(); // Ensure counter-clockwise
+        if (IsClockwise(verts)) verts.Reverse();
 
         List<List<Vector3>> convexPolys = SplitToConvex(verts);
         int id = 0;
@@ -65,16 +65,12 @@ public class NavMesh : MonoBehaviour
             if (IsClockwise(p1)) p1.Reverse();
             if (IsClockwise(p2)) p2.Reverse();
 
-            Debug.DrawLine(poly[i] + Vector3.up * 2, poly[j] + Vector3.up * 2, Color.yellow, 20f);
-
             var result = new List<List<Vector3>>();
             result.AddRange(SplitToConvex(p1));
             result.AddRange(SplitToConvex(p2));
             return result;
         }
     }
-
-    Debug.LogWarning("⚠️ Failed to split non-convex polygon.");
     return new List<List<Vector3>> { poly };
 }
 
