@@ -4,16 +4,22 @@ using UnityEngine;
 
 public class NavMesh : MonoBehaviour
 {
+    // Builds the navigation mesh graph from an outer polygon outline
     public Graph MakeNavMesh(List<Wall> outline)
     {
         Graph g = new Graph { outline = outline, all_nodes = new List<GraphNode>() };
 
+        // Extract vertices from wall start points
         List<Vector3> verts = outline.Select(w => w.start).ToList();
-        if (IsClockwise(verts)) verts.Reverse(); // Ensure counter-clockwise
 
+        // Ensure the polygon is counter-clockwise
+        if (IsClockwise(verts)) verts.Reverse();
+
+        // Split the non-convex polygon into a list of convex sub-polygons
         List<List<Vector3>> convexPolys = SplitToConvex(verts);
         int id = 0;
 
+        // Convert each convex polygon into a GraphNode with walls
         foreach (var poly in convexPolys)
         {
             var walls = new List<Wall>();
@@ -22,6 +28,7 @@ public class NavMesh : MonoBehaviour
             g.all_nodes.Add(new GraphNode(id++, walls));
         }
 
+        // Connect nodes by identifying shared edges
         for (int i = 0; i < g.all_nodes.Count; i++)
         {
             for (int j = i + 1; j < g.all_nodes.Count; j++)
@@ -37,6 +44,7 @@ public class NavMesh : MonoBehaviour
         return g;
     }
 
+    // Recursively splits a polygon into convex sub-polygons using valid diagonals
     List<List<Vector3>> SplitToConvex(List<Vector3> polygon)
     {
         var result = new List<List<Vector3>>();
@@ -55,6 +63,7 @@ public class NavMesh : MonoBehaviour
 
             bool splitOccurred = false;
 
+            // Try to find a reflex vertex to split from
             for (int i = 0; i < poly.Count; i++)
             {
                 Vector3 prev = poly[(i - 1 + poly.Count) % poly.Count];
@@ -64,16 +73,19 @@ public class NavMesh : MonoBehaviour
                 if (!IsReflex(prev, curr, next))
                     continue;
 
+                // Try to find a valid diagonal from reflex vertex
                 for (int offset = 2; offset < poly.Count - 1; offset++)
                 {
                     int j = (i + offset) % poly.Count;
 
+                   
                     if (j == i || Mathf.Abs(i - j) <= 1 || Mathf.Abs(i - j) == poly.Count - 1)
                         continue;
 
                     if (!ValidDiagonal(poly, i, j))
                         continue;
 
+                    
                     var p1 = GetSubPoly(poly, i, j);
                     var p2 = GetSubPoly(poly, j, i);
 
@@ -91,9 +103,10 @@ public class NavMesh : MonoBehaviour
                 if (splitOccurred) break;
             }
 
+
             if (!splitOccurred)
             {
-                Debug.LogWarning("⚠️ Polygon could not be split but is not convex!");
+                Debug.LogWarning("Polygon could not be split but is not convex!");
                 result.Add(poly);
             }
         }
@@ -101,6 +114,7 @@ public class NavMesh : MonoBehaviour
         return result;
     }
 
+    // Returns a portion of the polygon from start to end (in order)
     List<Vector3> GetSubPoly(List<Vector3> poly, int start, int end)
     {
         List<Vector3> sub = new();
@@ -110,6 +124,7 @@ public class NavMesh : MonoBehaviour
         return sub;
     }
 
+    // Checks if angle formed at curr is reflex (i.e. > 180 degrees)
     bool IsReflex(Vector3 prev, Vector3 curr, Vector3 next)
     {
         Vector2 vPrev = new Vector2(prev.x, prev.z);
@@ -123,6 +138,7 @@ public class NavMesh : MonoBehaviour
         return cross < 0;
     }
 
+    // Wrapper to check reflex condition on a vertex index
     bool IsReflexVertex(List<Vector3> poly, int i)
     {
         Vector3 prev = poly[(i - 1 + poly.Count) % poly.Count];
@@ -131,6 +147,7 @@ public class NavMesh : MonoBehaviour
         return IsReflex(prev, curr, next);
     }
 
+    // Checks if a polygon is fully convex
     bool IsConvex(List<Vector3> poly)
     {
         for (int i = 0; i < poly.Count; i++)
@@ -152,6 +169,7 @@ public class NavMesh : MonoBehaviour
         return area > 0;
     }
 
+    // Determines if a point is inside a polygon
     bool PointInPolygon(Vector3 p, List<Vector3> poly)
     {
         int count = 0;
@@ -170,11 +188,13 @@ public class NavMesh : MonoBehaviour
         return count % 2 == 1;
     }
 
+   
     bool ApproximatelyEqual(Vector3 a, Vector3 b)
     {
         return (a - b).sqrMagnitude < 1e-6f;
     }
 
+    // Checks if a diagonal from i to j is valid (inside polygon and not intersecting other edges)
     bool ValidDiagonal(List<Vector3> poly, int i, int j)
     {
         Wall diag = new(poly[i], poly[j]);
@@ -195,6 +215,7 @@ public class NavMesh : MonoBehaviour
         return true;
     }
 
+    // Checks if two polygons share an identical edge and returns the edge indices
     bool TryGetSharedEdge(GraphNode a, GraphNode b, out int edgeA, out int edgeB)
     {
         var aEdges = a.GetPolygon();
@@ -215,9 +236,12 @@ public class NavMesh : MonoBehaviour
         return false;
     }
 
+   
     void Start() => EventBus.OnSetMap += SetMap;
+
     void Update() { }
 
+    // Called when a new map is set; builds the graph and notifies the system
     public void SetMap(List<Wall> outline)
     {
         Graph navmesh = MakeNavMesh(outline);
