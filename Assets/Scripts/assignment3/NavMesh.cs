@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 
@@ -9,7 +9,7 @@ public class NavMesh : MonoBehaviour
         Graph g = new Graph { outline = outline, all_nodes = new List<GraphNode>() };
 
         List<Vector3> verts = outline.Select(w => w.start).ToList();
-        if (IsClockwise(verts)) verts.Reverse();
+        if (IsClockwise(verts)) verts.Reverse(); // Ensure counter-clockwise
 
         List<List<Vector3>> convexPolys = SplitToConvex(verts);
         int id = 0;
@@ -37,42 +37,69 @@ public class NavMesh : MonoBehaviour
         return g;
     }
 
-    List<List<Vector3>> SplitToConvex(List<Vector3> poly)
-{
-    if (IsConvex(poly)) return new List<List<Vector3>> { poly };
-
-    for (int i = 0; i < poly.Count; i++)
+    List<List<Vector3>> SplitToConvex(List<Vector3> polygon)
     {
-        Vector3 prev = poly[(i - 1 + poly.Count) % poly.Count];
-        Vector3 curr = poly[i];
-        Vector3 next = poly[(i + 1) % poly.Count];
+        var result = new List<List<Vector3>>();
+        var stack = new Stack<List<Vector3>>();
+        stack.Push(polygon);
 
-        if (!IsReflex(prev, curr, next)) continue;
-
-        for (int offset = 3; offset < poly.Count - 1; offset++)
+        while (stack.Count > 0)
         {
-            int j = (i + offset) % poly.Count;
+            var poly = stack.Pop();
 
-            if (j == i || Mathf.Abs(i - j) <= 1 || Mathf.Abs(i - j) == poly.Count - 1)
+            if (IsConvex(poly))
+            {
+                result.Add(poly);
                 continue;
+            }
 
-            if (!ValidDiagonal(poly, i, j))
-                continue;
+            bool splitOccurred = false;
 
-            var p1 = GetSubPoly(poly, i, j);
-            var p2 = GetSubPoly(poly, j, i);
+            for (int i = 0; i < poly.Count; i++)
+            {
+                Vector3 prev = poly[(i - 1 + poly.Count) % poly.Count];
+                Vector3 curr = poly[i];
+                Vector3 next = poly[(i + 1) % poly.Count];
 
-            if (IsClockwise(p1)) p1.Reverse();
-            if (IsClockwise(p2)) p2.Reverse();
+                if (!IsReflex(prev, curr, next))
+                    continue;
 
-            var result = new List<List<Vector3>>();
-            result.AddRange(SplitToConvex(p1));
-            result.AddRange(SplitToConvex(p2));
-            return result;
+                for (int offset = 2; offset < poly.Count - 1; offset++)
+                {
+                    int j = (i + offset) % poly.Count;
+
+                    if (j == i || Mathf.Abs(i - j) <= 1 || Mathf.Abs(i - j) == poly.Count - 1)
+                        continue;
+
+                    if (!ValidDiagonal(poly, i, j))
+                        continue;
+
+                    var p1 = GetSubPoly(poly, i, j);
+                    var p2 = GetSubPoly(poly, j, i);
+
+                    if (IsClockwise(p1)) p1.Reverse();
+                    if (IsClockwise(p2)) p2.Reverse();
+
+                    Debug.DrawLine(poly[i] + Vector3.up * 2, poly[j] + Vector3.up * 2, Color.yellow, 30f);
+
+                    stack.Push(p1);
+                    stack.Push(p2);
+                    splitOccurred = true;
+                    break;
+                }
+
+                if (splitOccurred) break;
+            }
+
+            if (!splitOccurred)
+            {
+                Debug.LogWarning("⚠️ Polygon could not be split but is not convex!");
+                result.Add(poly);
+            }
         }
+
+        return result;
     }
-    return new List<List<Vector3>> { poly };
-}
 
     List<Vector3> GetSubPoly(List<Vector3> poly, int start, int end)
     {
@@ -84,17 +111,17 @@ public class NavMesh : MonoBehaviour
     }
 
     bool IsReflex(Vector3 prev, Vector3 curr, Vector3 next)
-{
-    Vector2 vPrev = new Vector2(prev.x, prev.z);
-    Vector2 vCurr = new Vector2(curr.x, curr.z);
-    Vector2 vNext = new Vector2(next.x, next.z);
+    {
+        Vector2 vPrev = new Vector2(prev.x, prev.z);
+        Vector2 vCurr = new Vector2(curr.x, curr.z);
+        Vector2 vNext = new Vector2(next.x, next.z);
 
-    Vector2 a = vCurr - vPrev;
-    Vector2 b = vNext - vCurr;
+        Vector2 a = vCurr - vPrev;
+        Vector2 b = vNext - vCurr;
 
-    float cross = a.x * b.y - a.y * b.x;
-    return cross < 0;
-}
+        float cross = a.x * b.y - a.y * b.x;
+        return cross < 0;
+    }
 
     bool IsReflexVertex(List<Vector3> poly, int i)
     {
