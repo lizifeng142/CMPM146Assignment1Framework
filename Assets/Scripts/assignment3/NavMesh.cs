@@ -9,10 +9,11 @@ public class NavMesh : MonoBehaviour
         Graph g = new Graph { outline = outline, all_nodes = new List<GraphNode>() };
 
         List<Vector3> verts = outline.Select(w => w.start).ToList();
-        if (IsClockwise(verts)) verts.Reverse(); // Ensure counter-clockwise winding
+        if (IsClockwise(verts)) verts.Reverse(); // Ensure counter-clockwise
 
         List<List<Vector3>> convexPolys = SplitToConvex(verts);
         int id = 0;
+
         foreach (var poly in convexPolys)
         {
             var walls = new List<Wall>();
@@ -36,7 +37,6 @@ public class NavMesh : MonoBehaviour
         return g;
     }
 
-    // Recursively splits a polygon into convex sub-polygons using Strategy 1
     List<List<Vector3>> SplitToConvex(List<Vector3> poly)
 {
     if (IsConvex(poly)) return new List<List<Vector3>> { poly };
@@ -49,16 +49,16 @@ public class NavMesh : MonoBehaviour
 
         if (!IsReflex(prev, curr, next)) continue;
 
-        // Try connecting to the next available vertex in order, skipping ahead 3+
         for (int offset = 3; offset < poly.Count - 1; offset++)
         {
             int j = (i + offset) % poly.Count;
 
-            // Skip adjacent or overlapping vertices
-            if (j == i || Mathf.Abs(i - j) <= 1 || Mathf.Abs(i - j) == poly.Count - 1) continue;
-            if (!ValidDiagonal(poly, i, j)) continue;
+            if (j == i || Mathf.Abs(i - j) <= 1 || Mathf.Abs(i - j) == poly.Count - 1)
+                continue;
 
-            // Found a good diagonal
+            if (!ValidDiagonal(poly, i, j))
+                continue;
+
             var p1 = GetSubPoly(poly, i, j);
             var p2 = GetSubPoly(poly, j, i);
 
@@ -78,7 +78,6 @@ public class NavMesh : MonoBehaviour
     return new List<List<Vector3>> { poly };
 }
 
-    // Extracts a sub-polygon from start to end (inclusive), wrapping around
     List<Vector3> GetSubPoly(List<Vector3> poly, int start, int end)
     {
         List<Vector3> sub = new();
@@ -88,59 +87,71 @@ public class NavMesh : MonoBehaviour
         return sub;
     }
 
-    // Checks if the angle at 'curr' is a reflex (i.e., > 180 degrees)
     bool IsReflex(Vector3 prev, Vector3 curr, Vector3 next)
+{
+    Vector2 vPrev = new Vector2(prev.x, prev.z);
+    Vector2 vCurr = new Vector2(curr.x, curr.z);
+    Vector2 vNext = new Vector2(next.x, next.z);
+
+    Vector2 a = vCurr - vPrev;
+    Vector2 b = vNext - vCurr;
+
+    float cross = a.x * b.y - a.y * b.x;
+    return cross < 0;
+}
+
+    bool IsReflexVertex(List<Vector3> poly, int i)
     {
-        Vector3 toPrev = curr - prev;
-        Vector3 toNext = next - curr;
-        float crossY = Vector3.Cross(toPrev, toNext).y;
-        return crossY < 0;
+        Vector3 prev = poly[(i - 1 + poly.Count) % poly.Count];
+        Vector3 curr = poly[i];
+        Vector3 next = poly[(i + 1) % poly.Count];
+        return IsReflex(prev, curr, next);
     }
 
-    // Returns true if the polygon is convex (has no reflex vertices)
     bool IsConvex(List<Vector3> poly)
     {
         for (int i = 0; i < poly.Count; i++)
         {
-            Vector3 prev = poly[(i - 1 + poly.Count) % poly.Count];
-            Vector3 curr = poly[i];
-            Vector3 next = poly[(i + 1) % poly.Count];
-            if (IsReflex(prev, curr, next)) return false;
+            if (IsReflexVertex(poly, i)) return false;
         }
         return true;
     }
 
-    // Checks if a polygon is ordered clockwise (used for correction)
     bool IsClockwise(List<Vector3> pts)
     {
-        float sum = 0;
+        float area = 0;
         for (int i = 0; i < pts.Count; i++)
         {
-            Vector3 current = pts[i];
-            Vector3 next = pts[(i + 1) % pts.Count];
-            sum += (next.x - current.x) * (next.z + current.z);
+            Vector2 curr = new(pts[i].x, pts[i].z);
+            Vector2 next = new(pts[(i + 1) % pts.Count].x, pts[(i + 1) % pts.Count].z);
+            area += (next.x - curr.x) * (next.y + curr.y);
         }
-        return sum > 0;
+        return area > 0;
     }
 
-    // Determines whether point 'p' is inside a polygon
     bool PointInPolygon(Vector3 p, List<Vector3> poly)
     {
         int count = 0;
+        Vector2 point = new(p.x, p.z);
         for (int i = 0; i < poly.Count; i++)
         {
-            Vector3 a = poly[i], b = poly[(i + 1) % poly.Count];
-            if ((a.z > p.z) != (b.z > p.z))
+            Vector2 a = new(poly[i].x, poly[i].z);
+            Vector2 b = new(poly[(i + 1) % poly.Count].x, poly[(i + 1) % poly.Count].z);
+            if ((a.y > point.y) != (b.y > point.y))
             {
-                float t = (p.z - a.z) / (b.z - a.z);
+                float t = (point.y - a.y) / (b.y - a.y);
                 float x = a.x + t * (b.x - a.x);
-                if (p.x < x) count++;
+                if (point.x < x) count++;
             }
         }
         return count % 2 == 1;
     }
 
-    // Checks if a diagonal between i and j is valid (inside polygon and non-intersecting)
+    bool ApproximatelyEqual(Vector3 a, Vector3 b)
+    {
+        return (a - b).sqrMagnitude < 1e-6f;
+    }
+
     bool ValidDiagonal(List<Vector3> poly, int i, int j)
     {
         Wall diag = new(poly[i], poly[j]);
@@ -149,14 +160,18 @@ public class NavMesh : MonoBehaviour
 
         for (int k = 0; k < poly.Count; k++)
         {
-            Vector3 a = poly[k], b = poly[(k + 1) % poly.Count];
-            if ((a == poly[i] || a == poly[j] || b == poly[i] || b == poly[j])) continue;
+            Vector3 a = poly[k];
+            Vector3 b = poly[(k + 1) % poly.Count];
+
+            if (ApproximatelyEqual(a, poly[i]) || ApproximatelyEqual(a, poly[j]) ||
+                ApproximatelyEqual(b, poly[i]) || ApproximatelyEqual(b, poly[j]))
+                continue;
+
             if (diag.Crosses(a, b)) return false;
         }
         return true;
     }
 
-    // Checks if two polygons share a wall
     bool TryGetSharedEdge(GraphNode a, GraphNode b, out int edgeA, out int edgeB)
     {
         var aEdges = a.GetPolygon();
